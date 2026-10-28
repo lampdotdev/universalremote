@@ -301,7 +301,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleExecutable</key><string>UniversalRemote</string>
-  <key>CFBundleIdentifier</key><string>dev.lamp.dev.pensive-curie-69cf17.app.universalremote</string>
+  <key>CFBundleIdentifier</key><string>dev.lamp.dev.app.universalremote</string>
   <key>CFBundleName</key><string>Universal Remote</string>
   <key>CFBundleDisplayName</key><string>Universal Remote</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -325,6 +325,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSAppleMusicUsageDescription</key><string>Universal Remote plays music from your library.</string>
 </dict></plist>
 PLIST
-intents UniversalRemote "$APP" "dev.lamp.dev.pensive-curie-69cf17.app.universalremote" Sources
+intents UniversalRemote "$APP" "dev.lamp.dev.app.universalremote" Sources
 codesign --force -s - "$APP"
 echo "Built $APP"
