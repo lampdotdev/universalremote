@@ -3,7 +3,7 @@
     {
       "name" : "Universal Remote",
       "starter" : "universalremote",
-      "url" : "https://github.com/RooCodeInc/lamp-starter-universalremote"
+      "url" : "https://github.com/lampdotdev/universalremote"
     }
   ],
   "upstream" : [
