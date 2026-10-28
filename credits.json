@@ -1,0 +1,12 @@
+{
+  "remixOf" : [
+    {
+      "name" : "Universal Remote",
+      "starter" : "universalremote",
+      "url" : "https://github.com/RooCodeInc/lamp-starter-universalremote"
+    }
+  ],
+  "upstream" : [
+
+  ]
+}
