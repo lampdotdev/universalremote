@@ -13,6 +13,12 @@ enum TVKey: String, CaseIterable {
     case n5 = "KEY_5", n6 = "KEY_6", n7 = "KEY_7", n8 = "KEY_8", n9 = "KEY_9"
 
     static func digit(_ d: Int) -> TVKey? { TVKey(rawValue: "KEY_\(d)") }
+
+    /// "Volume up", for what the remote says it sent.
+    var title: String {
+        let name = String(describing: self).replacingOccurrences(of: #"([a-z])([A-Z])"#, with: "$1 $2", options: .regularExpression)
+        return name.prefix(1).uppercased() + name.dropFirst().lowercased()
+    }
 }
 
 /// An app on the TV.
@@ -521,4 +527,34 @@ extension TVRemote: DeviceController {
     func appList() async -> [TVApp] { installedApps.isEmpty ? TVApp.popular : installedApps }
 
     func icon(for app: TVApp) -> LampImage? { icons[app.id] }
+
+    /// A click or an app over the TV's own channel. The TV doesn't answer a key, so a key that went is `sent`; a TV
+    /// chosen in its place meanwhile makes it `unknown`, since it may have gone to either.
+    func deliver(_ command: RemoteCommand) async -> CommandOutcome {
+        let target = tv?.id
+        switch command {
+        case .press(let key, let times):
+            let count = max(1, min(times, 50))
+            for i in 0..<count {
+                if i > 0 { try? await Task.sleep(for: .milliseconds(160)) }
+                let went = await emit(["method": "ms.remote.control",
+                                       "params": ["Cmd": "Click", "DataOfCmd": key.rawValue, "Option": "false", "TypeOfRemote": "SendRemoteKey"]])
+                if !went { return i == 0 ? .failed("The TV didn't take it.") : .unknown("Only \(i) of \(count) went.") }
+            }
+        case .open(let app):
+            var opened = false
+            if let tv, let url = URL(string: "http://\(tv.address):8001/api/v2/applications/\(app.id)") {
+                var request = URLRequest(url: url, timeoutInterval: 4)
+                request.httpMethod = "POST"
+                if let (_, response) = try? await session.data(for: request), (response as? HTTPURLResponse)?.statusCode == 200 { opened = true }
+            }
+            if !opened {
+                let went = await emit(["method": "ms.channel.emit",
+                                       "params": ["event": "ed.apps.launch", "to": "host", "data": ["appId": app.id, "action_type": "NATIVE_LAUNCH"]]])
+                if !went { return .failed("The TV didn't take it.") }
+            }
+        }
+        if tv?.id != target { return .unknown("Another TV was chosen while it was sending.") }
+        return .sent
+    }
 }

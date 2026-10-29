@@ -151,6 +151,32 @@ final class SonosDevice: ObservableObject, DeviceController {
         await settle()
     }
 
+    /// Play and pause are confirmed by what the speaker says it's doing afterwards; the rest it only takes.
+    func deliver(_ command: RemoteCommand) async -> CommandOutcome {
+        guard case .press(let key, let times) = command else { return .notSent("A speaker has no apps.") }
+        do {
+            switch key {
+            case .play: try await sonos.play()
+            case .pause, .stop: try await sonos.pause()
+            case .fastForward, .right, .channelUp: try await sonos.next()
+            case .rewind, .left, .channelDown: try await sonos.previous()
+            case .volumeUp, .up: try await sonos.setVolume(Int(volume) + 3 * times)
+            case .volumeDown, .down: try await sonos.setVolume(Int(volume) - 3 * times)
+            case .mute: try await sonos.setMuted(!muted)
+            default: return .notSent("A speaker has no \(key.title) key.")
+            }
+        } catch {
+            answered = false
+            return .failed(error.localizedDescription)
+        }
+        await settle()
+        switch key {
+        case .play: return playing.isPlaying ? .confirmed("Playing") : .unknown("The speaker doesn't say it's playing.")
+        case .pause, .stop: return playing.isPlaying ? .unknown("The speaker still says it's playing.") : .confirmed("Paused")
+        default: return .sent
+        }
+    }
+
     /// A moment for the speaker to take the change, then what it's doing now.
     private func settle() async {
         try? await Task.sleep(for: .milliseconds(300))

@@ -24,6 +24,11 @@ struct ContentView: View {
                 .padding(.vertical, 12)
                 if hub.can(.apps) { appsRow }
             }
+            VStack(alignment: .leading, spacing: 12) {
+                RoutinesBar()
+                AskBar()
+            }
+            .padding(.top, 4)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -61,7 +66,7 @@ struct ContentView: View {
             if phase == .active, let device = hub.selected { hub.select(device) }
         }
         #if os(macOS)
-        .frame(minWidth: 360, minHeight: 820)
+        .frame(minWidth: 360, minHeight: 980)
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(action: handleKey)

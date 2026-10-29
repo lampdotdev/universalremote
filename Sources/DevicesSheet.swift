@@ -62,7 +62,7 @@ struct DevicesSheet: View {
 
                 Section {
                     Button { pick(.example) } label: {
-                        row("Example TV", "Try the remote: nothing is sent", "sparkles.tv", chosen: hub.selectedID == HomeDevice.example.id)
+                        row("Example TVs", "Two TVs to try the remote and routines on: nothing is sent", "sparkles.tv", chosen: HomeDevice.examples.contains { $0.id == hub.selectedID })
                     }
                     .buttonStyle(.plain)
                 }

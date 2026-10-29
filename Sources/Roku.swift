@@ -31,6 +31,24 @@ final class RokuDevice: DeviceController {
         }
     }
 
+    /// The Roku answers each press and launch; an answer means it took it, not what it did with it.
+    func deliver(_ command: RemoteCommand) async -> CommandOutcome {
+        switch command {
+        case .press(let key, let times):
+            guard let mapped = Self.keys[key] else { return .notSent("A Roku has no \(key.title) key.") }
+            let count = max(1, min(times, 50))
+            for i in 0..<count {
+                if i > 0 { try? await Task.sleep(for: .milliseconds(150)) }
+                do { try await roku.press(mapped) } catch {
+                    return i == 0 ? .failed(error.localizedDescription) : .unknown("Only \(i) of \(count) went.")
+                }
+            }
+        case .open(let app):
+            do { try await roku.launch(appID: app.id) } catch { return .failed(error.localizedDescription) }
+        }
+        return .sent
+    }
+
     func appList() async -> [TVApp] {
         if apps.isEmpty, let list = try? await roku.apps() { apps = list.map { TVApp(id: $0.id, name: $0.name) } }
         return apps
