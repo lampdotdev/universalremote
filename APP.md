@@ -46,6 +46,8 @@ Shortcuts can press its buttons, open apps or take a spoken request. Nothing nee
   on it and the limits; `CommandSender` checks again right before sending, to the id named, one command at a time. A
   device name that could be two ("the TV") is asked back with the names as choices.
 - **Without it**: Ask says why and offers "Set up in Lamp"; keys, voice's one-press commands and routine buttons work.
+- **Beyond Ask**: the remote's keys, routines once saved, and anything else in it stay plain code. A change that
+  would put AI somewhere new in it is offered first and built only after a yes.
 - **Proof case**: with the example TVs, "Make Movie Night: open YouTube on the TV, wait five seconds, then press Home
   on the other TV" asks which TV, makes a three-step draft that's saved without sending anything, and runs from its
   button, Stop during the wait leaving the last step skipped.
