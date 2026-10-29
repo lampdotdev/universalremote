@@ -66,7 +66,7 @@ struct ContentView: View {
             if phase == .active, let device = hub.selected { hub.select(device) }
         }
         #if os(macOS)
-        .frame(minWidth: 360, minHeight: 820)
+        .frame(minWidth: 360, minHeight: 780)
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(action: handleKey)
