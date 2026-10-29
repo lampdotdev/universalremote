@@ -3,6 +3,7 @@ import SwiftUI
 /// The saved routines as buttons (each opens its Run review; no AI), and the draft Ask is making, to review and save.
 struct RoutinesBar: View {
     @ObservedObject private var routines = Routines.shared
+    @State private var reviewingDraft = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -31,14 +32,25 @@ struct RoutinesBar: View {
                     }
                 }
             }
-            if routines.draft != nil { DraftCard() }
+            if let draft = routines.draft {
+                Button { reviewingDraft = true } label: {
+                    Label("Review “\(draft.name.isEmpty ? "New routine" : draft.name)”: \(draft.steps.count) step\(draft.steps.count == 1 ? "" : "s"), not saved", systemImage: "square.and.pencil")
+                        .font(.callout.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Capsule().strokeBorder(RemoteColors.faint, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                        .foregroundStyle(RemoteColors.label)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .sheet(item: $routines.reviewing, onDismiss: { routines.closeReview() }) { _ in RunReview() }
+        .sheet(isPresented: $reviewingDraft) { DraftCard { reviewingDraft = false } }
     }
 }
 
 /// The routine Ask is making: its name, each step with the device and app named, what it still needs, and Save.
 struct DraftCard: View {
+    let close: () -> Void
     @ObservedObject private var routines = Routines.shared
     @State private var problem: String?
     @State private var askingReplace = false
@@ -46,29 +58,37 @@ struct DraftCard: View {
     var body: some View {
         let draft = routines.draft ?? RoutineDraft()
         VStack(alignment: .leading, spacing: 6) {
-            Text(draft.name.isEmpty ? "New routine" : draft.name).font(.headline).foregroundStyle(RemoteColors.label)
+            Text(draft.name.isEmpty ? "New routine" : draft.name).font(.title3.weight(.semibold))
             ForEach(Array(draft.steps.enumerated()), id: \.element.id) { index, step in
-                Text("\(index + 1). \(Routines.words(step))").font(.caption).foregroundStyle(RemoteColors.label)
+                Text("\(index + 1). \(Routines.words(step))").font(.callout)
             }
             ForEach(routines.unresolved(draft), id: \.self) { need in
                 Label(need, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.yellow)
             }
             if let problem { Text(problem).font(.caption).foregroundStyle(.yellow) }
-            Text("Saving sends nothing. Run it from its button.").font(.caption2).foregroundStyle(RemoteColors.faint)
+            Text("Saving sends nothing. Run it from its button.").font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("Discard") { routines.draft = nil }.buttonStyle(.plain).foregroundStyle(RemoteColors.faint)
+                Button("Discard") { routines.draft = nil; close() }
                 Spacer()
+                Button("Not Now") { close() }.keyboardShortcut(.cancelAction)
                 Button("Save Routine") {
-                    if routines.named(draft.name) != nil { askingReplace = true } else { problem = routines.save(draft) }
+                    if routines.named(draft.name) != nil { askingReplace = true }
+                    else { problem = routines.save(draft); if problem == nil { close() } }
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(routines.problem(with: draft) != nil)
             }
+            .padding(.top, 6)
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 14).fill(RemoteColors.key.opacity(0.6)))
+        .padding(20)
+        .frame(width: 360, alignment: .leading)
+        .presentationBackground(.black)
+        .environment(\.colorScheme, .dark)
         .confirmationDialog("There's already a routine called \(draft.name).", isPresented: $askingReplace) {
-            Button("Replace It") { problem = routines.save(draft, replacing: routines.named(draft.name)) }
+            Button("Replace It") {
+                problem = routines.save(draft, replacing: routines.named(draft.name))
+                if problem == nil { close() }
+            }
             Button("Keep Both: Rename This One") { routines.draft?.name = draft.name + " 2" }
             Button("Cancel", role: .cancel) {}
         }
@@ -87,20 +107,18 @@ struct RunReview: View {
                     ForEach(Array(routine.steps.enumerated()), id: \.element.id) { index, step in
                         Text("\(index + 1). \(Routines.words(step))").font(.callout)
                     }
-                }
-                HStack {
-                    Button("Close") { routines.closeReview() }
-                    Spacer()
-                    if let run = routines.run, run.isRunning {
-                        Button("Stop", role: .destructive) { run.stop() }.keyboardShortcut(.cancelAction)
-                    } else if routines.run == nil {
+                    HStack {
+                        Button("Close") { routines.closeReview() }
+                        Spacer()
                         Button("Run") { routines.start() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
                     }
                 }
             }
         }
         .padding(20)
-        .frame(width: 360)
+        .frame(width: 360, alignment: .leading)
+        .presentationBackground(.black)
+        .environment(\.colorScheme, .dark)
     }
 }
 
@@ -123,6 +141,12 @@ private struct RunSteps: View {
                 Text("Example TVs got, in order:").font(.caption.weight(.semibold)).padding(.top, 6)
                 Text(ExampleTV.log.suffix(6).joined(separator: "\n").ifEmpty("nothing yet")).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
+            HStack {
+                Button("Close") { Routines.shared.closeReview() }
+                Spacer()
+                if run.isRunning { Button("Stop", role: .destructive) { run.stop() }.keyboardShortcut(.cancelAction) }
+            }
+            .padding(.top, 6)
         }
     }
 

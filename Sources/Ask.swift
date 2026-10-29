@@ -314,7 +314,7 @@ struct AskBar: View {
             Text(ask.step).font(.caption).foregroundStyle(RemoteColors.faint)
         } else if !ask.said.isEmpty {
             HStack(alignment: .top) {
-                Text(ask.said).font(.caption).foregroundStyle(RemoteColors.label).fixedSize(horizontal: false, vertical: true)
+                Text(ask.said).font(.caption).foregroundStyle(RemoteColors.label).lineLimit(4)
                 if ask.failedRequest != nil { Button("Try Again") { ask.retry() }.buttonStyle(.plain).font(.caption.weight(.semibold)) }
             }
         } else if let status = ask.status {
