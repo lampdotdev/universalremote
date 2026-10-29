@@ -4,21 +4,23 @@
 
 <p align="center">One remote you can tap or talk to for your TV, Roku and Sonos speakers.</p>
 
-<p align="center"><a href="#remix-it-with-lamp">Remix it with Lamp</a> · <a href="#build-it-yourself">Build it yourself</a></p>
+<p align="center"><a href="https://lamp.dev/?repo=https://github.com/lampdotdev/universalremote&amp;from=readme"><img src=".github/open-in-lamp.svg" width="164" height="48" alt="Open in Lamp"></a></p>
+
+<p align="center"><a href="#build-it-yourself">Build it yourself</a></p>
 
 <p align="center"><img src=".github/preview.png" width="720" alt="Universal Remote"></p>
 
 ## Make Universal Remote yours
 
-It's yours to change by asking Lamp. A few places to start:
+Each opens Lamp with a copy of Universal Remote and that change, ready to send:
 
-- Put the remote on my iPhone
-- Add a bedtime button
-- A kids' mode with their apps
+- [Put the remote on my iPhone](https://lamp.dev/?repo=https://github.com/lampdotdev/universalremote&from=readme&ask=Put%20the%20remote%20on%20my%20iPhone)
+- [Add a bedtime button](https://lamp.dev/?repo=https://github.com/lampdotdev/universalremote&from=readme&ask=Add%20a%20bedtime%20button)
+- [A kids' mode with their apps](https://lamp.dev/?repo=https://github.com/lampdotdev/universalremote&from=readme&ask=A%20kids'%20mode%20with%20their%20apps)
 
-## Remix it with Lamp
+## Open it in Lamp
 
-[Lamp](https://lamp.dev) is a Mac app that builds apps from a description and changes them as you ask. In Lamp, choose File → Open from GitHub… and paste `https://github.com/lampdotdev/universalremote`: you get this exact wish, yours to change, with the credits below kept.
+[Lamp](https://lamp.dev) is a Mac app that builds apps from a description and changes them as you ask. [Open Universal Remote in Lamp](https://lamp.dev/?repo=https://github.com/lampdotdev/universalremote&from=readme) for a copy of your own, to use and to change as you like, with the credits below kept. Or, in Lamp, choose File → Open from GitHub… and paste `https://github.com/lampdotdev/universalremote`.
 
 ## Build it yourself
 
