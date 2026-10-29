@@ -10,15 +10,27 @@ final class CommandSender {
     /// The command before this one, which this one waits for: two commands never interleave on one connection.
     private var last: Task<CommandOutcome, Never>?
 
-    /// Sends `command` to the device with this id, after every command asked for before it.
-    func run(_ command: RemoteCommand, on deviceID: String) async -> CommandOutcome {
+    /// Sends `command` to the device with this id, after every command asked for before it. If the caller is cancelled
+    /// (Ask stopped) or `stopped` says so (a routine's Stop) while it waits its turn, it isn't sent at all; once it's
+    /// being sent, it finishes, since it can't be taken back.
+    func run(_ command: RemoteCommand, on deviceID: String, unless stopped: @escaping @MainActor () -> Bool = { false }) async -> CommandOutcome {
         let before = last
+        let cancelled = Flag()
         let task = Task { @MainActor in
             _ = await before?.value
+            if cancelled.isOn || stopped() { return CommandOutcome.notSent("Stopped before it was sent.") }
             return await self.dispatch(command, on: deviceID)
         }
         last = task
-        return await task.value
+        return await withTaskCancellationHandler { await task.value } onCancel: { cancelled.set() }
+    }
+
+    /// Set from any thread, when the caller is cancelled.
+    private final class Flag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var on = false
+        var isOn: Bool { lock.withLock { on } }
+        func set() { lock.withLock { on = true } }
     }
 
     /// Why this command can't go to this device now, or nil. Asked again right before it's sent.
@@ -33,6 +45,10 @@ final class CommandSender {
         case .open(let app):
             guard controller.abilities.contains(.apps) else { return "\(device.name) doesn't open apps." }
             guard await controller.appList().contains(where: { $0.id == app.id }) else { return "\(device.name) doesn't have \(app.name)." }
+        case .power, .turnOn:
+            guard controller.abilities.contains(.power) else { return "\(device.name) can't be turned on or off from here." }
+        case .type:
+            guard controller.abilities.contains(.text) else { return "\(device.name) doesn't take typing." }
         }
         if case .needs(let what) = controller.state { return "\(device.name): \(what)." }
         // One Samsung TV at a time goes through the TV's own channel: the one it's connected to.
@@ -41,7 +57,6 @@ final class CommandSender {
     }
 
     private func dispatch(_ command: RemoteCommand, on deviceID: String) async -> CommandOutcome {
-        if Task.isCancelled { return .notSent("Stopped.") }
         if let problem = await problem(command, on: deviceID) { return .notSent(problem) }
         guard let device = DeviceHub.shared.known(deviceID), let controller = DeviceHub.shared.controller(for: device) else {
             return .notSent("That device isn't one of the remote's any more.")

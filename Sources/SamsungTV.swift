@@ -156,11 +156,12 @@ final class TVRemote: ObservableObject {
 
     /// Sends one message, connecting first when needed. Says whether it went.
     @discardableResult
-    private func emit(_ message: [String: Any]) async -> Bool {
+    /// `to`: the TV it's for. If another is chosen while it connects, it isn't sent at all: it would go to that one.
+    private func emit(_ message: [String: Any], to target: String? = nil) async -> Bool {
         guard let data = try? JSONSerialization.data(withJSONObject: message),
               let text = String(data: data, encoding: .utf8) else { return false }
         for attempt in 0..<2 {
-            guard await ensureConnected(), let socket else { return false }
+            guard await ensureConnected(), let socket, target == nil || tv?.id == target else { return false }
             do {
                 try await socket.send(.string(text))
                 return true
@@ -531,15 +532,23 @@ extension TVRemote: DeviceController {
     /// A click or an app over the TV's own channel. The TV doesn't answer a key, so a key that went is `sent`; a TV
     /// chosen in its place meanwhile makes it `unknown`, since it may have gone to either.
     func deliver(_ command: RemoteCommand) async -> CommandOutcome {
-        let target = tv?.id
+        guard let target = tv?.id else { return .notSent("No Samsung TV is chosen.") }
+        let moved = "Another TV was chosen while it was sending."
+        func key(_ code: String) -> [String: Any] {
+            ["method": "ms.remote.control", "params": ["Cmd": "Click", "DataOfCmd": code, "Option": "false", "TypeOfRemote": "SendRemoteKey"]]
+        }
+        // What didn't go: nothing yet (not sent, or failed), or part of it (unknown). A TV chosen in its place is why,
+        // when it's that: the rest is never sent to the other one.
+        func stopped(after sent: Int, of count: Int) -> CommandOutcome {
+            if tv?.id != target { return sent == 0 ? .notSent(moved) : .unknown("\(moved) Only \(sent) of \(count) went.") }
+            return sent == 0 ? .failed("The TV didn't take it.") : .unknown("Only \(sent) of \(count) went.")
+        }
         switch command {
-        case .press(let key, let times):
+        case .press(let pressed, let times):
             let count = max(1, min(times, 50))
             for i in 0..<count {
                 if i > 0 { try? await Task.sleep(for: .milliseconds(160)) }
-                let went = await emit(["method": "ms.remote.control",
-                                       "params": ["Cmd": "Click", "DataOfCmd": key.rawValue, "Option": "false", "TypeOfRemote": "SendRemoteKey"]])
-                if !went { return i == 0 ? .failed("The TV didn't take it.") : .unknown("Only \(i) of \(count) went.") }
+                guard tv?.id == target, await emit(key(pressed.rawValue), to: target) else { return stopped(after: i, of: count) }
             }
         case .open(let app):
             var opened = false
@@ -549,12 +558,23 @@ extension TVRemote: DeviceController {
                 if let (_, response) = try? await session.data(for: request), (response as? HTTPURLResponse)?.statusCode == 200 { opened = true }
             }
             if !opened {
-                let went = await emit(["method": "ms.channel.emit",
-                                       "params": ["event": "ed.apps.launch", "to": "host", "data": ["appId": app.id, "action_type": "NATIVE_LAUNCH"]]])
-                if !went { return .failed("The TV didn't take it.") }
+                guard tv?.id == target, await emit(["method": "ms.channel.emit",
+                                                     "params": ["event": "ed.apps.launch", "to": "host", "data": ["appId": app.id, "action_type": "NATIVE_LAUNCH"]]],
+                                                    to: target) else { return stopped(after: 0, of: 1) }
             }
+        case .power:
+            guard status == .connected, socket != nil else { return await deliver(.turnOn) }
+            guard await emit(key(TVKey.power.rawValue), to: target) else { return stopped(after: 0, of: 1) }
+        case .turnOn:
+            await turnOn()
+            guard tv?.id == target else { return .unknown(moved) }
+            return status == .connected ? .confirmed("It answered, so it's on") : .failed(state.words)
+        case .type(let text):
+            let encoded = Data(text.utf8).base64EncodedString()
+            guard await emit(["method": "ms.remote.control", "params": ["Cmd": encoded, "DataOfCmd": "base64", "TypeOfRemote": "SendInputString"]], to: target),
+                  await emit(["method": "ms.remote.control", "params": ["TypeOfRemote": "SendInputEnd"]], to: target) else { return stopped(after: 0, of: 1) }
         }
-        if tv?.id != target { return .unknown("Another TV was chosen while it was sending.") }
+        if tv?.id != target { return .unknown(moved) }
         return .sent
     }
 }

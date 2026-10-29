@@ -28,9 +28,7 @@ struct PressTVButtonIntent: AppIntent {
         let hub = DeviceHub.shared
         let outcome: CommandOutcome
         switch command {
-        case .turnOn:
-            await hub.controller?.turnOn()
-            return .result(dialog: "Turning on your TV.")
+        case .turnOn: outcome = await hub.turnOn()
         case .turnOff: outcome = await hub.send(.power)
         case .volumeUp: outcome = await hub.send(.volumeUp, times: 2)
         case .volumeDown: outcome = await hub.send(.volumeDown, times: 2)
@@ -42,6 +40,7 @@ struct PressTVButtonIntent: AppIntent {
         }
         switch outcome {
         case .notSent(let why), .failed(let why), .unknown(let why): return .result(dialog: "\(why)")
+        case .confirmed(let what): return .result(dialog: "\(what).")
         default: return .result(dialog: "Sent.")
         }
     }
@@ -55,7 +54,7 @@ struct TellTVIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        await VoiceCommands.run(request)
+        await VoiceCommands.run(request, fresh: true)
         // A request Ask took: what it did, from its tools' receipts, once it's finished.
         var reply = VoiceListener.shared.reply
         if reply.hasPrefix("Asking") {

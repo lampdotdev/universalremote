@@ -24,12 +24,13 @@ final class AskModel: ObservableObject {
 
     func refresh() async { status = await LampAI.status(.act) }
 
-    /// Sends what's typed (or heard). An answer to the question waiting goes to it; anything else is a new request.
-    func submit(_ request: String? = nil) {
+    /// Sends what's typed (or heard). While a question waits, what's typed, said or chosen answers it; a `fresh`
+    /// request (from Siri) is always a new one.
+    func submit(_ request: String? = nil, fresh: Bool = false) {
         let words = (request ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return }
         if request == nil { text = "" }
-        if question != nil, let answering = session.answer(words, context: context, onStep: show) {
+        if !fresh, question != nil, let answering = session.answer(words, context: context, onStep: show) {
             go(answering, words)
         } else {
             go(session.ask(words, context: context, onStep: show), words)
@@ -42,11 +43,16 @@ final class AskModel: ObservableObject {
         go(session.ask(request, context: context, onStep: show), request)
     }
 
+    /// Stops now: the field is free at once. A change already under way still finishes, and what it did is shown
+    /// when it does.
     func cancel() {
         turn?.cancel()
         session.cancel()
         question = nil
         choices = []
+        working = false
+        step = ""
+        said = "Stopped."
     }
 
     private func go(_ turn: LampActTurn, _ words: String) {
@@ -65,7 +71,8 @@ final class AskModel: ObservableObject {
             question = result.question
             choices = result.choices
             said = result.summary
-            if result.stopped == .error || result.stopped == .unreachable || result.stopped == .time { failedRequest = words }
+            // Try Again only when nothing went through: asking again after a change was made would make it twice.
+            if [.error, .unreachable, .time].contains(result.stopped), result.done.isEmpty { failedRequest = words }
             if result.stopped == .unreachable { await refresh() }
         }
     }
@@ -220,7 +227,12 @@ final class AskModel: ObservableObject {
                    }),
             .write("reviewRoutine", "Opens a saved routine's review, where the person can press Run. It doesn't run it.",
                    args: ["routineID": .text("A routine's id from routines")], as: RoutineArg.self,
-                   check: { a, _ in routines.routine(a.routineID) == nil ? "There's no saved routine with that id." : nil },
+                   check: { a, _ in
+                       if routines.routine(a.routineID) == nil { return "There's no saved routine with that id." }
+                       if routines.run?.isRunning == true { return "A routine is running: wait for it to finish." }
+                       if routines.reviewing != nil { return "A routine's review is open: close it first." }
+                       return nil
+                   },
                    run: { a, _ in
                        guard let routine = routines.routine(a.routineID) else { throw LampAI.Failure(message: "That routine isn't there any more.") }
                        routines.review(routine)

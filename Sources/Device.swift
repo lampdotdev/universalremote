@@ -38,15 +38,22 @@ struct HomeDevice: Codable, Identifiable, Hashable {
     static let examples = [example, secondExample]
 }
 
-/// One thing sent to one device: a key (pressed `times` times) or an app opened.
+/// One thing sent to one device: a key (pressed `times` times), an app opened, power (on when it's off, off when it's
+/// on, as the remote's key does), turning it on, or words typed into its search box.
 enum RemoteCommand: Hashable {
     case press(TVKey, times: Int)
     case open(TVApp)
+    case power
+    case turnOn
+    case type(String)
 
     var words: String {
         switch self {
         case .press(let key, let times): return key.title + (times > 1 ? " ×\(times)" : "")
         case .open(let app): return "Open \(app.name)"
+        case .power: return "Power"
+        case .turnOn: return "Turn on"
+        case .type(let text): return "Type “\(text)”"
         }
     }
 }

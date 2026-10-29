@@ -157,7 +157,7 @@ final class Routines: ObservableObject {
         guard let routine = reviewing, run?.isRunning != true else { return }
         let run = RoutineRun(routine)
         self.run = run
-        Task { await run.go() }
+        run.task = Task { await run.go() }
     }
 
     func closeReview() {
@@ -211,7 +211,13 @@ final class RoutineRun: ObservableObject {
         states = routine.steps.map { _ in .waiting }
     }
 
-    func stop() { stopping = true }
+    /// The run's task, cancelled by Stop: a command still waiting its turn isn't sent, nor is anything after it.
+    var task: Task<Void, Never>?
+
+    func stop() {
+        stopping = true
+        task?.cancel()
+    }
 
     func go() async {
         isRunning = true
@@ -247,7 +253,13 @@ final class RoutineRun: ObservableObject {
                     return
                 }
                 let device = DeviceHub.shared.known(deviceID)?.name ?? "that device"
-                let outcome = await CommandSender.shared.run(command, on: deviceID)
+                if stopping {
+                    states[index] = .stopped("Not sent: stopped.")
+                    skipRest(from: index + 1, "Not run: stopped.")
+                    ending = "Stopped."
+                    return
+                }
+                let outcome = await CommandSender.shared.run(command, on: deviceID, unless: { [weak self] in self?.stopping ?? true })
                 states[index] = outcome.wentThrough ? .done(outcome.receipt(command, on: device)) : .stopped(outcome.receipt(command, on: device))
                 // A step that didn't go, or might not have, stops the rest: the person sees what's left rather than
                 // have it sent again by itself.

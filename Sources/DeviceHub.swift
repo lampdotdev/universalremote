@@ -191,10 +191,15 @@ final class DeviceHub: ObservableObject {
 
     func power() {
         pressCount += 1
-        Task {
-            await controller?.togglePower()
-            revision += 1
-        }
+        guard let id = selected?.id else { return }
+        Task { _ = report(await CommandSender.shared.run(.power, on: id)) }
+    }
+
+    /// Turns the device chosen now on, through the same checks and queue as its keys.
+    @discardableResult
+    func turnOn() async -> CommandOutcome {
+        guard let id = selected?.id else { return .notSent("Choose a device first.") }
+        return report(await CommandSender.shared.run(.turnOn, on: id))
     }
 
     func type(_ text: String) {
@@ -202,7 +207,11 @@ final class DeviceHub: ObservableObject {
         Task { await send(text: text) }
     }
 
-    func send(text: String) async { await controller?.send(text: text) }
+    @discardableResult
+    func send(text: String) async -> CommandOutcome {
+        guard let id = selected?.id else { return .notSent("Choose a device first.") }
+        return report(await CommandSender.shared.run(.type(text), on: id))
+    }
 
     func launch(_ app: TVApp) {
         pressCount += 1

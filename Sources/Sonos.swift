@@ -153,7 +153,7 @@ final class SonosDevice: ObservableObject, DeviceController {
 
     /// Play and pause are confirmed by what the speaker says it's doing afterwards; the rest it only takes.
     func deliver(_ command: RemoteCommand) async -> CommandOutcome {
-        guard case .press(let key, let times) = command else { return .notSent("A speaker has no apps.") }
+        guard case .press(let key, let times) = command else { return .notSent("A speaker can't \(command.words.lowercased()).") }
         do {
             switch key {
             case .play: try await sonos.play()

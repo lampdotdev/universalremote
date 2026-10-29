@@ -45,6 +45,15 @@ final class RokuDevice: DeviceController {
             }
         case .open(let app):
             do { try await roku.launch(appID: app.id) } catch { return .failed(error.localizedDescription) }
+        case .power:
+            do {
+                let on = (try await roku.info())["power-mode"] == "PowerOn"
+                try await roku.power(on: !on)
+            } catch { return .failed(error.localizedDescription) }
+        case .turnOn:
+            do { try await roku.power(on: true) } catch { return .failed(error.localizedDescription) }
+        case .type(let text):
+            do { try await roku.type(text) } catch { return .failed(error.localizedDescription) }
         }
         return .sent
     }
