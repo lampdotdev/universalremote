@@ -18,6 +18,8 @@ final class AskModel: ObservableObject {
     @Published private(set) var choices: [String] = []
     /// The request kept after a failure, for Try Again.
     @Published private(set) var failedRequest: String?
+    /// The field has the keyboard: the remote's own keys (Space, Return, Delete, the arrows) leave it alone.
+    var typing = false
 
     private lazy var session = LampActSession(about: Self.about, tools: tools)
     private var turn: LampActTurn?
@@ -261,6 +263,7 @@ final class AskModel: ObservableObject {
 struct AskBar: View {
     @ObservedObject private var ask = AskModel.shared
     @Environment(\.scenePhase) private var scenePhase
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -272,6 +275,8 @@ struct AskBar: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Capsule().fill(RemoteColors.key))
+                    .focused($focused)
+                    .onChange(of: focused) { _, now in ask.typing = now }
                     .onSubmit { if ready { ask.submit() } }
                     .disabled(ask.working)
                 if ask.working {

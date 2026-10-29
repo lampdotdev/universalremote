@@ -218,7 +218,7 @@ struct ContentView: View {
     #if os(macOS)
     /// The Mac's keyboard works the remote: arrows, Return for OK, Escape or Delete for Back, Space to play.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
+        guard press.modifiers.isDisjoint(with: [.command, .control, .option]), !AskModel.shared.typing else { return .ignored }
         let keys: [KeyEquivalent: TVKey] = [.upArrow: .up, .downArrow: .down, .leftArrow: .left, .rightArrow: .right,
                                             .return: .ok, .escape: .back, .delete: .back, .space: .play]
         guard let key = keys[press.key] else { return .ignored }
