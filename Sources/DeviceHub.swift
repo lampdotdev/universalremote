@@ -27,20 +27,26 @@ final class DeviceHub: ObservableObject {
 
     private var rokus: [String: LampRoku] = [:]
     private var controllers: [String: DeviceController] = [:]
-    private let example = ExampleTV()
 
     init() {
         devices = LampStore.load([HomeDevice].self, from: "devices") ?? []
         rokus = LampStore.load([String: LampRoku].self, from: "rokus") ?? [:]
         selectedID = LampStore.load(String.self, from: "selectedDevice")
-        example.said = { [weak self] in self?.note = $0 }
         if selectedID == nil { selectedID = devices.first?.id }
     }
 
-    /// The devices to choose from: the ones found, and the example TV while it's in use or nothing has been found.
+    /// The devices to choose from: the ones found, and the example TVs while one is in use or nothing has been found.
     var choices: [HomeDevice] {
-        devices.isEmpty || selectedID == HomeDevice.example.id ? devices + [.example] : devices
+        devices.isEmpty || HomeDevice.examples.contains(where: { $0.id == selectedID }) ? devices + HomeDevice.examples : devices
     }
+
+    /// A device the remote can send to, by id: one found, or an example TV.
+    func known(_ id: String) -> HomeDevice? {
+        devices.first { $0.id == id } ?? HomeDevice.examples.first { $0.id == id }
+    }
+
+    /// Something was sent: the line under the device's name is read again.
+    func changed() { revision += 1 }
 
     var selected: HomeDevice? { choices.first { $0.id == selectedID } ?? devices.first }
 
@@ -50,14 +56,19 @@ final class DeviceHub: ObservableObject {
 
     var state: DeviceState { controller?.state ?? .needs("Find your TV and speakers") }
 
-    private func controller(for device: HomeDevice) -> DeviceController? {
+    func controller(for device: HomeDevice) -> DeviceController? {
         if let known = controllers[device.id] { return known }
         let made: DeviceController?
         switch device.kind {
         case .samsung: made = TVRemote.shared
         case .roku: made = rokus[device.id].map(RokuDevice.init)
         case .sonos: made = SonosDevice(address: device.address)
-        case .example: made = example
+        case .example:
+            let tv = ExampleTV(name: device.name)
+            tv.said = { [weak self] words in
+                if self?.selectedID == device.id { self?.note = words }
+            }
+            made = tv
         }
         controllers[device.id] = made
         return made
@@ -162,17 +173,33 @@ final class DeviceHub: ObservableObject {
         Task { await send(key, times: times) }
     }
 
-    func send(_ key: TVKey, times: Int = 1) async {
-        await controller?.send(key, times: times)
-        revision += 1
+    /// Sends a key to the device chosen now: it's named here, so choosing another before it goes changes nothing.
+    @discardableResult
+    func send(_ key: TVKey, times: Int = 1) async -> CommandOutcome {
+        guard let id = selected?.id else { return .notSent("Choose a device first.") }
+        return report(await CommandSender.shared.run(.press(key, times: times), on: id))
+    }
+
+    /// A key or an app that didn't go says why on the line under the remote.
+    private func report(_ outcome: CommandOutcome) -> CommandOutcome {
+        switch outcome {
+        case .notSent(let why), .failed(let why), .unknown(let why): note = why
+        default: break
+        }
+        return outcome
     }
 
     func power() {
         pressCount += 1
-        Task {
-            await controller?.togglePower()
-            revision += 1
-        }
+        guard let id = selected?.id else { return }
+        Task { _ = report(await CommandSender.shared.run(.power, on: id)) }
+    }
+
+    /// Turns the device chosen now on, through the same checks and queue as its keys.
+    @discardableResult
+    func turnOn() async -> CommandOutcome {
+        guard let id = selected?.id else { return .notSent("Choose a device first.") }
+        return report(await CommandSender.shared.run(.turnOn, on: id))
     }
 
     func type(_ text: String) {
@@ -180,14 +207,22 @@ final class DeviceHub: ObservableObject {
         Task { await send(text: text) }
     }
 
-    func send(text: String) async { await controller?.send(text: text) }
+    @discardableResult
+    func send(text: String) async -> CommandOutcome {
+        guard let id = selected?.id else { return .notSent("Choose a device first.") }
+        return report(await CommandSender.shared.run(.type(text), on: id))
+    }
 
     func launch(_ app: TVApp) {
         pressCount += 1
         Task { await open(app) }
     }
 
-    func open(_ app: TVApp) async { await controller?.open(app) }
+    @discardableResult
+    func open(_ app: TVApp) async -> CommandOutcome {
+        guard let id = selected?.id else { return .notSent("Choose a device first.") }
+        return report(await CommandSender.shared.run(.open(app), on: id))
+    }
 
     /// Every app on the chosen device, for voice.
     func allApps() async -> [TVApp] { await controller?.appList() ?? [] }

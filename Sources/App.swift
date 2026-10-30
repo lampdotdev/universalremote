@@ -7,7 +7,7 @@ struct MainApp: SwiftUI.App {
             ContentView()
         }
         #if os(macOS)
-        .defaultSize(width: 380, height: 840)
+        .defaultSize(width: 380, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
             LampCommands()

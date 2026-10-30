@@ -24,6 +24,11 @@ struct ContentView: View {
                 .padding(.vertical, 12)
                 if hub.can(.apps) { appsRow }
             }
+            VStack(alignment: .leading, spacing: 12) {
+                RoutinesBar()
+                AskBar()
+            }
+            .padding(.top, 4)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -61,7 +66,7 @@ struct ContentView: View {
             if phase == .active, let device = hub.selected { hub.select(device) }
         }
         #if os(macOS)
-        .frame(minWidth: 360, minHeight: 820)
+        .frame(minWidth: 360, minHeight: 780)
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(action: handleKey)
@@ -213,7 +218,7 @@ struct ContentView: View {
     #if os(macOS)
     /// The Mac's keyboard works the remote: arrows, Return for OK, Escape or Delete for Back, Space to play.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
+        guard press.modifiers.isDisjoint(with: [.command, .control, .option]), !AskModel.shared.typing else { return .ignored }
         let keys: [KeyEquivalent: TVKey] = [.upArrow: .up, .downArrow: .down, .leftArrow: .left, .rightArrow: .right,
                                             .return: .ok, .escape: .back, .delete: .back, .space: .play]
         guard let key = keys[press.key] else { return .ignored }

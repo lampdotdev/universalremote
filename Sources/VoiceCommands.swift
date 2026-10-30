@@ -32,129 +32,69 @@ enum VoiceCommands {
         "powerOn": ("turn the TV on", "Turning on"),
     ]
 
-    static func run(_ said: String) async {
+    /// A one-press command goes straight to the device chosen now, through the same checks as its key, and says what
+    /// came of it; anything more is Ask's, with its checked tools.
+    /// `fresh`: a request of its own (Siri), never an answer to a question Ask is waiting on.
+    static func run(_ said: String, fresh: Bool = false) async {
         let voice = VoiceListener.shared
         voice.isThinking = true
         defer { voice.isThinking = false }
 
         let hub = DeviceHub.shared
-        let apps = await DeviceHub.shared.allApps()
+        // The device chosen when it was heard is the one it's for, whatever is chosen by the time it's understood.
+        guard let target = hub.selected else { voice.reply = "Choose a device first."; return }
+        let apps = await hub.controller(for: target)?.appList() ?? []
         var options = quick.mapValues(\.description)
         for app in apps.prefix(40) { options["open \(app.name)"] = "open the \(app.name) app" }
-        for device in hub.devices where device.id != hub.selected?.id {
+        for device in hub.choices where device.id != target.id {
             options["switch to \(device.name)"] = "control the \(device.kindName) called \(device.name) instead (only when they name it or say switch)"
         }
-        options["other"] = "anything else: pressing something several times or by an amount, several things in a row, a channel number, typing or searching for words, or not a TV command at all"
+        options["other"] = "anything else: pressing something several times or by an amount, several things in a row, a routine, another device named, a channel number, or not a TV command at all"
 
         if let decision = try? await LampAI.decide(about: said, [
             "command": .choice("Which TV remote command does the person want?", options: options)
         ])["command"], let choice = decision.choice, choice != "other", (decision.confidence ?? 0) > 0.4 {
             if let entry = quick[choice] {
-                perform(choice)
-                voice.reply = entry.reply
+                voice.reply = await perform(choice, on: target, saying: entry.reply)
                 return
             }
-            if let device = hub.devices.first(where: { "switch to \($0.name)" == choice }) {
+            if let device = hub.choices.first(where: { "switch to \($0.name)" == choice }) {
                 hub.select(device)
                 voice.reply = "Now controlling \(device.name)"
                 return
             }
             if let app = apps.first(where: { "open \($0.name)" == choice }) {
-                hub.launch(app)
-                voice.reply = "Opening \(app.name)"
+                hub.pressCount += 1
+                let outcome = await CommandSender.shared.run(.open(app), on: target.id)
+                voice.reply = outcome.wentThrough ? "Opening \(app.name)" : outcome.receipt(.open(app), on: target.name)
                 return
             }
         }
-        await plan(said, apps: apps)
-    }
-
-    // MARK: Several steps
-
-    private struct Plan: Decodable {
-        var steps: [Step]
-        var reply: String
-    }
-
-    private struct Step: Decodable {
-        var key: String?
-        var times: Int?
-        var app: String?
-        var type: String?
-        var wait: Double?
-        var device: String?
-    }
-
-    private static func plan(_ said: String, apps: [TVApp]) async {
-        let voice = VoiceListener.shared
-        let keys = keyNames.keys.sorted().joined(separator: ", ")
-        let hub = DeviceHub.shared
-        let devices = hub.devices.map { "\($0.name) (\($0.kindName))" }.joined(separator: ", ")
-        let prompt = """
-        You are a universal remote. Right now it controls \(hub.selected.map { "\($0.name), a \($0.kindName)" } ?? "nothing").
-        Other devices: \(devices). The person said what's in the data. Turn it into steps.
-        Remote keys you can press: \(keys), powerOn, powerOff.
-        Apps on the TV: \(apps.map(\.name).joined(separator: ", ")).
-        Reply with JSON only, in this shape:
-        {"steps": [{"device": "Living Room"}, {"key": "volumeUp", "times": 5}, {"app": "YouTube"}, {"wait": 3}, {"type": "words to type"}], "reply": "Turning it up 5"}
-        Each step has exactly one of device (switch to that device by name, only when they name another device), key (with optional times, 1 to 50), app (a name from the list), wait (seconds), or type (text for the TV's on-screen keyboard).
-        On a Sonos speaker: play, pause, fastForward is next track, rewind is previous track, volumeUp and volumeDown change volume by 3 each.
-        A channel number is its digit keys (n1, n2, ...) then ok. To search an app, open it, wait about 4 seconds, and only then type.
-        "A bit" or "a little" is 3 presses, "a lot" is 10. reply is a short, friendly confirmation under 8 words.
-        If it isn't something a TV remote can do, return no steps and a short reply saying so.
-        """
-        do {
-            let plan = try await LampAI.ask(prompt, data: said, as: Plan.self)
-            voice.reply = plan.reply
-            await execute(plan.steps, apps: apps)
-        } catch {
-            voice.reply = "I couldn't work that out: \(error.localizedDescription)"
+        let ask = AskModel.shared
+        guard ask.status?.available == true else {
+            voice.reply = ask.status?.reason ?? "That needs Ask, which needs AI set up in Lamp."
+            return
         }
-    }
-
-    private static func execute(_ steps: [Step], apps: [TVApp]) async {
-        let hub = DeviceHub.shared
-        var apps = apps
-        for step in steps.prefix(30) {
-            if let name = step.device {
-                if let device = hub.devices.first(where: { $0.name.localizedCaseInsensitiveContains(name) || name.localizedCaseInsensitiveContains($0.name) }) {
-                    hub.select(device)
-                    await hub.controller?.wake()
-                    apps = await hub.allApps()
-                }
-            } else if let name = step.key {
-                if name == "powerOn" || name == "powerOff" {
-                    perform(name)
-                } else if let key = keyNames[name] {
-                    hub.pressCount += 1
-                    await hub.send(key, times: step.times ?? 1)
-                }
-                try? await Task.sleep(for: .milliseconds(250))
-            } else if let name = step.app {
-                let app = apps.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
-                    ?? apps.first { $0.name.localizedCaseInsensitiveContains(name) || name.localizedCaseInsensitiveContains($0.name) }
-                if let app { await hub.open(app) }
-            } else if let seconds = step.wait {
-                try? await Task.sleep(for: .seconds(min(max(seconds, 0), 10)))
-            } else if let text = step.type, !text.isEmpty {
-                await hub.send(text: text)
-            }
-        }
+        ask.submit(said, fresh: fresh)
+        voice.reply = "Asking: “\(said)”"
     }
 
     // MARK: Helpers
 
-    private static func perform(_ name: String) {
-        let hub = DeviceHub.shared
+    /// One press on the device it was heard for; the reply is what came of it.
+    private static func perform(_ name: String, on target: HomeDevice, saying reply: String) async -> String {
+        DeviceHub.shared.pressCount += 1
+        let command: RemoteCommand
         switch name {
-        case "powerOn":
-            if hub.can(.power) { Task { await hub.controller?.turnOn() } }
-        case "powerOff":
-            if hub.can(.power) { hub.press(.power) }
+        case "powerOn": command = .turnOn
+        case "powerOff": command = .power
         default:
-            if let key = keyNames[name] { hub.press(key) }
+            guard let key = keyNames[name] else { return "I couldn't do that." }
+            command = .press(key, times: 1)
         }
+        let outcome = await CommandSender.shared.run(command, on: target.id)
+        return outcome.wentThrough ? reply : outcome.receipt(command, on: target.name)
     }
-
 
     static let keyNames: [String: TVKey] = [
         "home": .home, "back": .back, "exit": .exit,

@@ -26,21 +26,23 @@ struct PressTVButtonIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let hub = DeviceHub.shared
+        let outcome: CommandOutcome
         switch command {
-        case .turnOn:
-            await hub.controller?.turnOn()
-            return .result(dialog: "Turning on your TV.")
-        case .turnOff: await hub.send(.power)
-        case .volumeUp: await hub.send(.volumeUp, times: 2)
-        case .volumeDown: await hub.send(.volumeDown, times: 2)
-        case .mute: await hub.send(.mute)
-        case .home: await hub.send(.home)
-        case .back: await hub.send(.back)
-        case .play: await hub.send(.play)
-        case .pause: await hub.send(.pause)
+        case .turnOn: outcome = await hub.turnOn()
+        case .turnOff: outcome = await hub.send(.power)
+        case .volumeUp: outcome = await hub.send(.volumeUp, times: 2)
+        case .volumeDown: outcome = await hub.send(.volumeDown, times: 2)
+        case .mute: outcome = await hub.send(.mute)
+        case .home: outcome = await hub.send(.home)
+        case .back: outcome = await hub.send(.back)
+        case .play: outcome = await hub.send(.play)
+        case .pause: outcome = await hub.send(.pause)
         }
-        if case .offline = hub.state { return .result(dialog: "I couldn't reach your TV.") }
-        return .result(dialog: "Done.")
+        switch outcome {
+        case .notSent(let why), .failed(let why), .unknown(let why): return .result(dialog: "\(why)")
+        case .confirmed(let what): return .result(dialog: "\(what).")
+        default: return .result(dialog: "Sent.")
+        }
     }
 }
 
@@ -52,8 +54,13 @@ struct TellTVIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        await VoiceCommands.run(request)
-        let reply = VoiceListener.shared.reply
+        await VoiceCommands.run(request, fresh: true)
+        // A request Ask took: what it did, from its tools' receipts, once it's finished.
+        var reply = VoiceListener.shared.reply
+        if reply.hasPrefix("Asking") {
+            while AskModel.shared.working { try? await Task.sleep(for: .milliseconds(200)) }
+            reply = AskModel.shared.said
+        }
         return .result(dialog: "\(reply.isEmpty ? "Done." : reply)")
     }
 }
